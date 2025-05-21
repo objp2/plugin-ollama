@@ -1,10 +1,45 @@
-import type { ObjectGenerationParams, Plugin, TextEmbeddingParams } from '@elizaos/core';
+import type {
+  ObjectGenerationParams,
+  Plugin,
+  TextEmbeddingParams,
+} from '@elizaos/core';
 import { type GenerateTextParams, ModelType, logger } from '@elizaos/core';
 import { generateObject, generateText } from 'ai';
 import { createOllama } from 'ollama-ai-provider';
 
 // Default Ollama API URL
 const OLLAMA_API_URL = 'http://localhost:11434/api';
+
+async function ensureModelAvailable(
+  runtime: {
+    fetch: typeof fetch;
+    getSetting: (key: string) => string | undefined;
+  },
+  model: string,
+) {
+  const baseURL = runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL;
+  try {
+    const showRes = await fetch(`${baseURL}/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
+    });
+    if (showRes.ok) return;
+    logger.info(`[Ollama] Model ${model} not found locally. Downloading...`);
+    const pullRes = await fetch(`${baseURL}/pull`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, stream: false }),
+    });
+    if (!pullRes.ok) {
+      logger.error(`Failed to pull model ${model}: ${pullRes.statusText}`);
+    } else {
+      logger.info(`[Ollama] Downloaded model ${model}`);
+    }
+  } catch (err) {
+    logger.error('Error ensuring model availability:', err);
+  }
+}
 
 /**
  * Generate text using Ollama API
@@ -20,7 +55,7 @@ async function generateOllamaText(
     frequencyPenalty: number;
     presencePenalty: number;
     stopSequences: string[];
-  }
+  },
 ) {
   try {
     const { text: ollamaResponse } = await generateText({
@@ -46,7 +81,7 @@ async function generateOllamaText(
 async function generateOllamaObject(
   ollama: ReturnType<typeof createOllama>,
   model: string,
-  params: ObjectGenerationParams
+  params: ObjectGenerationParams,
 ) {
   try {
     const { object } = await generateObject({
@@ -75,7 +110,7 @@ export const ollamaPlugin: Plugin = {
   models: {
     [ModelType.TEXT_EMBEDDING]: async (
       runtime,
-      params: TextEmbeddingParams | string | null
+      params: TextEmbeddingParams | string | null,
     ): Promise<number[]> => {
       try {
         const ollama = createOllama({
@@ -83,10 +118,14 @@ export const ollamaPlugin: Plugin = {
           baseURL: runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL,
         });
 
-        const modelName = runtime.getSetting('OLLAMA_EMBEDDING_MODEL') || 'nomic-embed-text';
+        const modelName =
+          runtime.getSetting('OLLAMA_EMBEDDING_MODEL') || 'nomic-embed-text';
         logger.log(`[Ollama] Using TEXT_EMBEDDING model: ${modelName}`);
+        await ensureModelAvailable(runtime, modelName);
         const text =
-          typeof params === 'string' ? params : (params as TextEmbeddingParams)?.text || '';
+          typeof params === 'string'
+            ? params
+            : (params as TextEmbeddingParams)?.text || '';
 
         if (!text) {
           logger.error('No text provided for embedding');
@@ -106,7 +145,7 @@ export const ollamaPlugin: Plugin = {
                 model: modelName,
                 prompt: text,
               }),
-            }
+            },
           );
 
           if (!response.ok) {
@@ -125,7 +164,10 @@ export const ollamaPlugin: Plugin = {
         return Array(1536).fill(0);
       }
     },
-    [ModelType.TEXT_SMALL]: async (runtime, { prompt, stopSequences = [] }: GenerateTextParams) => {
+    [ModelType.TEXT_SMALL]: async (
+      runtime,
+      { prompt, stopSequences = [] }: GenerateTextParams,
+    ) => {
       try {
         const temperature = 0.7;
         const frequency_penalty = 0.7;
@@ -142,6 +184,7 @@ export const ollamaPlugin: Plugin = {
           'gemma3:latest';
 
         logger.log(`[Ollama] Using TEXT_SMALL model: ${model}`);
+        await ensureModelAvailable(runtime, model);
         logger.log('generating text');
         logger.log(prompt);
 
@@ -168,7 +211,7 @@ export const ollamaPlugin: Plugin = {
         temperature = 0.7,
         frequencyPenalty = 0.7,
         presencePenalty = 0.7,
-      }: GenerateTextParams
+      }: GenerateTextParams,
     ) => {
       try {
         const model =
@@ -181,6 +224,7 @@ export const ollamaPlugin: Plugin = {
         });
 
         logger.log(`[Ollama] Using TEXT_LARGE model: ${model}`);
+        await ensureModelAvailable(runtime, model);
         return await generateOllamaText(ollama, model, {
           prompt,
           system: runtime.character.system ?? undefined,
@@ -195,7 +239,10 @@ export const ollamaPlugin: Plugin = {
         return 'Error generating text. Please try again later.';
       }
     },
-    [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
+    [ModelType.OBJECT_SMALL]: async (
+      runtime,
+      params: ObjectGenerationParams,
+    ) => {
       try {
         const ollama = createOllama({
           fetch: runtime.fetch,
@@ -207,6 +254,7 @@ export const ollamaPlugin: Plugin = {
           'gemma3:latest';
 
         logger.log(`[Ollama] Using OBJECT_SMALL model: ${model}`);
+        await ensureModelAvailable(runtime, model);
         if (params.schema) {
           logger.info('Using OBJECT_SMALL without schema validation');
         }
@@ -218,7 +266,10 @@ export const ollamaPlugin: Plugin = {
         return {};
       }
     },
-    [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
+    [ModelType.OBJECT_LARGE]: async (
+      runtime,
+      params: ObjectGenerationParams,
+    ) => {
       try {
         const ollama = createOllama({
           fetch: runtime.fetch,
@@ -230,6 +281,7 @@ export const ollamaPlugin: Plugin = {
           'gemma3:latest';
 
         logger.log(`[Ollama] Using OBJECT_LARGE model: ${model}`);
+        await ensureModelAvailable(runtime, model);
         if (params.schema) {
           logger.info('Using OBJECT_LARGE without schema validation');
         }
@@ -250,12 +302,18 @@ export const ollamaPlugin: Plugin = {
           name: 'ollama_test_url_validation',
           fn: async (runtime) => {
             try {
-              const baseURL = runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL;
+              const baseURL =
+                runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL;
               const response = await fetch(`${baseURL}/tags`);
               const data = await response.json();
-              logger.log('Models Available:', (data as { models: unknown[] })?.models?.length);
+              logger.log(
+                'Models Available:',
+                (data as { models: unknown[] })?.models?.length,
+              );
               if (!response.ok) {
-                logger.error(`Failed to validate Ollama API: ${response.statusText}`);
+                logger.error(
+                  `Failed to validate Ollama API: ${response.statusText}`,
+                );
                 return;
               }
             } catch (error) {
@@ -267,9 +325,12 @@ export const ollamaPlugin: Plugin = {
           name: 'ollama_test_text_embedding',
           fn: async (runtime) => {
             try {
-              const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-                text: 'Hello, world!',
-              });
+              const embedding = await runtime.useModel(
+                ModelType.TEXT_EMBEDDING,
+                {
+                  text: 'Hello, world!',
+                },
+              );
               logger.log('embedding', embedding);
             } catch (error) {
               logger.error('Error in test_text_embedding:', error);
