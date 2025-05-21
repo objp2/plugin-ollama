@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos-plugins/plugin-ollama",
+  "name": "@elizaos/plugin-ollama",
   "version": "1.0.0-beta.41",
   "type": "module",
   "main": "dist/index.js",
