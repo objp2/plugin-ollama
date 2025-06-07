@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-ollama",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -62,6 +62,18 @@
       "OLLAMA_API_ENDPOINT": {
         "type": "string",
         "description": "The URL of the Ollama API"
+      },
+      "SMALL_MODEL": {
+        "type": "string",
+        "description": "Alternative small model name used if OLLAMA_SMALL_MODEL is not provided.",
+        "required": false,
+        "default": "gemma3:latest"
+      },
+      "LARGE_MODEL": {
+        "type": "string",
+        "description": "Alternative large model name used if OLLAMA_LARGE_MODEL is not provided.",
+        "required": false,
+        "default": "gemma3:latest"
       }
     }
   },
