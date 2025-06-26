@@ -46,7 +46,7 @@
       "OLLAMA_API_ENDPOINT": {
         "type": "string",
         "description": "Base URL for the Ollama API that overrides the default http://localhost:11434/api endpoint.",
-        "required": false,
+        "required": true,
         "default": "http://localhost:11434/api",
         "sensitive": false
       },
