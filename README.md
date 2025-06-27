@@ -24,7 +24,7 @@ Ollama enables running large language models locally on your machine. This plugi
    ollama serve
    ```
 
-3. Configure the plugin asUsage
+## Usage
 
 Add the plugin to your character configuration:
 
