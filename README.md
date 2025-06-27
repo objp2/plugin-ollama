@@ -38,7 +38,7 @@ The plugin requires these environment variables (can be set in .env file or char
 
 ```json
 "settings": {
-  "OLLAMA_API_ENDPOINT": "http://localhost:11434/api",
+  "OLLAMA_API_ENDPOINT": "http://localhost:11434",
   "OLLAMA_SMALL_MODEL": "llama3",
   "OLLAMA_MEDIUM_MODEL": "your_medium_model",
   "OLLAMA_LARGE_MODEL": "gemma3:latest",
