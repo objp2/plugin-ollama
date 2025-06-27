@@ -52,21 +52,22 @@ function getBaseURL(runtime: {
  */
 async function ensureModelAvailable(
   runtime: {
-    fetch: typeof fetch;
     getSetting: (key: string) => string | undefined;
+    fetch?: typeof fetch;
   },
   model: string,
+  baseURL?: string,
 ) {
-  const baseURL = getBaseURL(runtime);
+  const url = baseURL || getBaseURL(runtime);
   try {
-    const showRes = await fetch(`${baseURL}/api/show`, {
+    const showRes = await fetch(`${url}/api/show`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model }),
     });
     if (showRes.ok) return;
     logger.info(`[Ollama] Model ${model} not found locally. Downloading...`);
-    const pullRes = await fetch(`${baseURL}/api/pull`, {
+    const pullRes = await fetch(`${url}/api/pull`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model, stream: false }),
@@ -166,7 +167,7 @@ export const ollamaPlugin: Plugin = {
         const modelName =
           runtime.getSetting("OLLAMA_EMBEDDING_MODEL") || "nomic-embed-text";
         logger.log(`[Ollama] Using TEXT_EMBEDDING model: ${modelName}`);
-        await ensureModelAvailable(runtime, modelName);
+        await ensureModelAvailable(runtime, modelName, baseURL);
         const text =
           typeof params === "string"
             ? params
@@ -183,7 +184,7 @@ export const ollamaPlugin: Plugin = {
         // may not be available in the current version of the AI SDK
         try {
           // This is simplified and may need to be adjusted based on the actual API
-          const baseURL = getBaseURL(runtime);
+
           const response = await fetch(`${baseURL}/api/embeddings`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -230,7 +231,7 @@ export const ollamaPlugin: Plugin = {
           "gemma3:latest";
 
         logger.log(`[Ollama] Using TEXT_SMALL model: ${model}`);
-        await ensureModelAvailable(runtime, model);
+        await ensureModelAvailable(runtime, model, baseURL);
         logger.log("generating text");
         logger.log(prompt);
 
@@ -271,7 +272,7 @@ export const ollamaPlugin: Plugin = {
         });
 
         logger.log(`[Ollama] Using TEXT_LARGE model: ${model}`);
-        await ensureModelAvailable(runtime, model);
+        await ensureModelAvailable(runtime, model, baseURL);
         return await generateOllamaText(ollama, model, {
           prompt,
           system: runtime.character?.system || undefined,
@@ -302,7 +303,7 @@ export const ollamaPlugin: Plugin = {
           "gemma3:latest";
 
         logger.log(`[Ollama] Using OBJECT_SMALL model: ${model}`);
-        await ensureModelAvailable(runtime, model);
+        await ensureModelAvailable(runtime, model, baseURL);
         if (params.schema) {
           logger.info("Using OBJECT_SMALL without schema validation");
         }
@@ -330,7 +331,7 @@ export const ollamaPlugin: Plugin = {
           "gemma3:latest";
 
         logger.log(`[Ollama] Using OBJECT_LARGE model: ${model}`);
-        await ensureModelAvailable(runtime, model);
+        await ensureModelAvailable(runtime, model, baseURL);
         if (params.schema) {
           logger.info("Using OBJECT_LARGE without schema validation");
         }
