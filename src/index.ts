@@ -4,45 +4,35 @@ import type {
   TextEmbeddingParams,
 } from "@elizaos/core";
 import { type GenerateTextParams, ModelType, logger } from "@elizaos/core";
-import { generateObject, generateText } from "ai";
+import { generateObject, generateText, embed } from "ai";
 import { createOllama } from "ollama-ai-provider";
 
 // Default Ollama API URL
-const OLLAMA_API_URL = "http://localhost:11434";
+const OLLAMA_API_URL = "http://localhost:11434/api";
 
 /**
- * Extracts the protocol and host from an API endpoint URL, removing any path or query components.
- *
- * If the input cannot be parsed as a valid URL, returns the original string.
- *
- * @param endpoint - The API endpoint URL to process
- * @returns The base domain (protocol and host) of the endpoint, or the original string if parsing fails
- */
-function stripEndpointToBaseDomain(endpoint: string): string {
-  try {
-    // Using Node.js URL module explicitly
-    const url = new URL(endpoint);
-    return `${url.protocol}//${url.host}`;
-  } catch (err) {
-    logger.error("Error parsing endpoint URL:", err);
-    return endpoint; // Return original if parsing fails
-  }
-}
-
-/**
- * Retrieves the Ollama API base URL from runtime settings, returning only the protocol and domain.
+ * Retrieves the Ollama API base URL from runtime settings.
  *
  * If the API endpoint is not set in the runtime, defaults to the standard Ollama URL.
- * Removes any path or trailing segments, ensuring the result is just the base domain.
+ * The URL should include the /api path for ollama-ai-provider compatibility.
  *
- * @returns The normalized base URL for the Ollama API.
+ * @returns The base URL for the Ollama API.
  */
 function getBaseURL(runtime: {
   getSetting: (key: string) => string | undefined;
 }): string {
   const apiEndpoint =
-    runtime.getSetting("OLLAMA_API_ENDPOINT") || OLLAMA_API_URL;
-  return stripEndpointToBaseDomain(apiEndpoint);
+    runtime.getSetting("OLLAMA_API_ENDPOINT") ||
+    runtime.getSetting("OLLAMA_API_URL") ||
+    OLLAMA_API_URL;
+
+  // Ensure the URL ends with /api for ollama-ai-provider
+  if (!apiEndpoint.endsWith("/api")) {
+    return apiEndpoint.endsWith("/")
+      ? `${apiEndpoint}api`
+      : `${apiEndpoint}/api`;
+  }
+  return apiEndpoint;
 }
 
 /**
@@ -56,18 +46,20 @@ async function ensureModelAvailable(
     fetch?: typeof fetch;
   },
   model: string,
-  baseURL?: string,
+  providedBaseURL?: string,
 ) {
-  const url = baseURL || getBaseURL(runtime);
+  const baseURL = providedBaseURL || getBaseURL(runtime);
+  // Remove /api suffix for direct API calls
+  const apiBase = baseURL.endsWith("/api") ? baseURL.slice(0, -4) : baseURL;
   try {
-    const showRes = await fetch(`${url}/api/show`, {
+    const showRes = await fetch(`${apiBase}/api/show`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model }),
     });
     if (showRes.ok) return;
     logger.info(`[Ollama] Model ${model} not found locally. Downloading...`);
-    const pullRes = await fetch(`${url}/api/pull`, {
+    const pullRes = await fetch(`${apiBase}/api/pull`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model, stream: false }),
@@ -154,36 +146,49 @@ export const ollamaPlugin: Plugin = {
   },
   async init(_config, runtime) {
     const baseURL = getBaseURL(runtime);
-    
+
     // Check if endpoint is configured
-    if (!baseURL || baseURL === "http://localhost:11434") {
+    if (!baseURL || baseURL === "http://localhost:11434/api") {
       const endpoint = runtime.getSetting("OLLAMA_API_ENDPOINT");
       if (!endpoint) {
         logger.warn(
-          'OLLAMA_API_ENDPOINT is not set in environment - Ollama functionality will use default localhost:11434'
+          "OLLAMA_API_ENDPOINT is not set in environment - Ollama functionality will use default localhost:11434",
         );
       }
     }
-    
+
     try {
       // Validate Ollama API endpoint by checking if it's accessible
-      const response = await fetch(`${baseURL}/api/tags`, {
+      // Remove /api suffix for direct API calls
+      const apiBase = baseURL.endsWith("/api") ? baseURL.slice(0, -4) : baseURL;
+      const response = await fetch(`${apiBase}/api/tags`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
-      
+
       if (!response.ok) {
-        logger.warn(`Ollama API endpoint validation failed: ${response.statusText}`);
-        logger.warn('Ollama functionality will be limited until a valid endpoint is provided');
+        logger.warn(
+          `Ollama API endpoint validation failed: ${response.statusText}`,
+        );
+        logger.warn(
+          "Ollama functionality will be limited until a valid endpoint is provided",
+        );
       } else {
-        const data = await response.json() as { models?: Array<{ name: string }> };
+        const data = (await response.json()) as {
+          models?: Array<{ name: string }>;
+        };
         const modelCount = data?.models?.length || 0;
-        logger.log(`Ollama API endpoint validated successfully. Found ${modelCount} models available.`);
+        logger.log(
+          `Ollama API endpoint validated successfully. Found ${modelCount} models available.`,
+        );
       }
     } catch (fetchError: unknown) {
-      const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      const message =
+        fetchError instanceof Error ? fetchError.message : String(fetchError);
       logger.warn(`Error validating Ollama API endpoint: ${message}`);
-      logger.warn('Ollama functionality will be limited until a valid endpoint is provided - Make sure Ollama is running at ${baseURL}');
+      logger.warn(
+        "Ollama functionality will be limited until a valid endpoint is provided - Make sure Ollama is running at ${baseURL}",
+      );
     }
   },
   models: {
@@ -214,26 +219,13 @@ export const ollamaPlugin: Plugin = {
           return Array(1536).fill(0);
         }
 
-        // Generate embeddings - note we're using a simpler approach since generateEmbedding
-        // may not be available in the current version of the AI SDK
+        // Use ollama.embedding() as shown in the docs
         try {
-          // This is simplified and may need to be adjusted based on the actual API
-
-          const response = await fetch(`${baseURL}/api/embeddings`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: modelName,
-              prompt: text,
-            }),
+          const { embedding } = await embed({
+            model: ollama.embedding(modelName),
+            value: text,
           });
-
-          if (!response.ok) {
-            throw new Error(`Embedding request failed: ${response.statusText}`);
-          }
-
-          const result = (await response.json()) as { embedding?: number[] };
-          return result.embedding || Array(1536).fill(0);
+          return embedding;
         } catch (embeddingError) {
           logger.error("Error generating embedding:", embeddingError);
           return Array(1536).fill(0);
@@ -262,7 +254,7 @@ export const ollamaPlugin: Plugin = {
         const model =
           runtime.getSetting("OLLAMA_SMALL_MODEL") ||
           runtime.getSetting("SMALL_MODEL") ||
-          "gemma3:latest";
+          "gemma3";
 
         logger.log(`[Ollama] Using TEXT_SMALL model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
@@ -298,7 +290,7 @@ export const ollamaPlugin: Plugin = {
         const model =
           runtime.getSetting("OLLAMA_LARGE_MODEL") ||
           runtime.getSetting("LARGE_MODEL") ||
-          "gemma3:latest";
+          "gemma3";
         const baseURL = getBaseURL(runtime);
         const ollama = createOllama({
           fetch: runtime.fetch,
@@ -334,7 +326,7 @@ export const ollamaPlugin: Plugin = {
         const model =
           runtime.getSetting("OLLAMA_SMALL_MODEL") ||
           runtime.getSetting("SMALL_MODEL") ||
-          "gemma3:latest";
+          "gemma3";
 
         logger.log(`[Ollama] Using OBJECT_SMALL model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
@@ -362,7 +354,7 @@ export const ollamaPlugin: Plugin = {
         const model =
           runtime.getSetting("OLLAMA_LARGE_MODEL") ||
           runtime.getSetting("LARGE_MODEL") ||
-          "gemma3:latest";
+          "gemma3";
 
         logger.log(`[Ollama] Using OBJECT_LARGE model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
@@ -387,7 +379,11 @@ export const ollamaPlugin: Plugin = {
           fn: async (runtime) => {
             try {
               const baseURL = getBaseURL(runtime);
-              const response = await fetch(`${baseURL}/api/tags`);
+              // Remove /api suffix for direct API calls
+              const apiBase = baseURL.endsWith("/api")
+                ? baseURL.slice(0, -4)
+                : baseURL;
+              const response = await fetch(`${apiBase}/api/tags`);
               const data = await response.json();
               logger.log(
                 "Models Available:",

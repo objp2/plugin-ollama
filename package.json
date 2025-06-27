@@ -24,6 +24,7 @@
   "dependencies": {
     "@ai-sdk/ui-utils": "^1.2.8",
     "@elizaos/core": "^1.0.0",
+    "@elizaos/plugin-local-ai": "1.0.5",
     "ai": "^4.3.9",
     "js-tiktoken": "^1.0.18",
     "ollama-ai-provider": "^1.2.0",
@@ -47,14 +48,14 @@
         "type": "string",
         "description": "Base URL for the Ollama API. The plugin will strip this to the domain part and append the necessary API paths.",
         "required": true,
-        "default": "http://localhost:11434",
+        "default": "http://localhost:11434/api",
         "sensitive": false
       },
       "OLLAMA_SMALL_MODEL": {
         "type": "string",
         "description": "Name or tag of the small-sized Ollama model to use for text and object generation.",
         "required": false,
-        "default": "gemma3:latest",
+        "default": "gemma3",
         "sensitive": false
       },
       "OLLAMA_MEDIUM_MODEL": {
@@ -67,7 +68,7 @@
         "type": "string",
         "description": "Name or tag of the large-sized Ollama model to use for text and object generation.",
         "required": false,
-        "default": "gemma3:latest",
+        "default": "gemma3",
         "sensitive": false
       },
       "OLLAMA_EMBEDDING_MODEL": {
@@ -81,14 +82,14 @@
         "type": "string",
         "description": "Fallback environment variable for specifying a small model if OLLAMA_SMALL_MODEL is not set.",
         "required": false,
-        "default": "gemma3:latest",
+        "default": "gemma3",
         "sensitive": false
       },
       "LARGE_MODEL": {
         "type": "string",
         "description": "Fallback environment variable for specifying a large model if OLLAMA_LARGE_MODEL is not set.",
         "required": false,
-        "default": "gemma3:latest",
+        "default": "gemma3",
         "sensitive": false
       }
     }
