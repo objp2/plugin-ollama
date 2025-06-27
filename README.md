@@ -38,10 +38,10 @@ The plugin requires these environment variables (can be set in .env file or char
 
 ```json
 "settings": {
-  "OLLAMA_API_ENDPOINT": "http://localhost:11434",
-  "OLLAMA_SMALL_MODEL": "llama3",
-  "OLLAMA_MEDIUM_MODEL": "your_medium_model",
-  "OLLAMA_LARGE_MODEL": "gemma3:latest",
+  "OLLAMA_API_ENDPOINT": "http://localhost:11434/api",
+  "OLLAMA_SMALL_MODEL": "gemma3",
+  "OLLAMA_MEDIUM_MODEL": "gemma3",
+  "OLLAMA_LARGE_MODEL": "gemma3",
   "OLLAMA_EMBEDDING_MODEL": "nomic-embed-text"
 }
 ```
@@ -50,18 +50,18 @@ Or in `.env` file:
 
 ```
 OLLAMA_API_ENDPOINT=http://localhost:11434/api
-OLLAMA_SMALL_MODEL=llama3
-OLLAMA_MEDIUM_MODEL=your_medium_model
-OLLAMA_LARGE_MODEL=gemma3:latest
+OLLAMA_SMALL_MODEL=gemma3
+OLLAMA_MEDIUM_MODEL=gemma3
+OLLAMA_LARGE_MODEL=gemma3
 OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 ```
 
 ### Configuration Options
 
 - `OLLAMA_API_ENDPOINT`: Ollama API endpoint (default: http://localhost:11434/api)
-- `OLLAMA_SMALL_MODEL`: Model for simpler tasks (default: llama3)
-- `OLLAMA_MEDIUM_MODEL`: Medium-complexity model
-- `OLLAMA_LARGE_MODEL`: Model for complex tasks (default: gemma3:latest)
+- `OLLAMA_SMALL_MODEL`: Model for simpler tasks (default: gemma3)
+- `OLLAMA_MEDIUM_MODEL`: Medium-complexity model (default: gemma3)
+- `OLLAMA_LARGE_MODEL`: Model for complex tasks (default: gemma3)
 - `OLLAMA_EMBEDDING_MODEL`: Model for text embeddings (default: nomic-embed-text)
 
 The plugin provides these model classes:
