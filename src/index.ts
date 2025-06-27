@@ -152,6 +152,40 @@ export const ollamaPlugin: Plugin = {
     OLLAMA_LARGE_MODEL: process.env.OLLAMA_LARGE_MODEL,
     OLLAMA_EMBEDDING_MODEL: process.env.OLLAMA_EMBEDDING_MODEL,
   },
+  async init(_config, runtime) {
+    const baseURL = getBaseURL(runtime);
+    
+    // Check if endpoint is configured
+    if (!baseURL || baseURL === "http://localhost:11434") {
+      const endpoint = runtime.getSetting("OLLAMA_API_ENDPOINT");
+      if (!endpoint) {
+        logger.warn(
+          'OLLAMA_API_ENDPOINT is not set in environment - Ollama functionality will use default localhost:11434'
+        );
+      }
+    }
+    
+    try {
+      // Validate Ollama API endpoint by checking if it's accessible
+      const response = await fetch(`${baseURL}/api/tags`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      if (!response.ok) {
+        logger.warn(`Ollama API endpoint validation failed: ${response.statusText}`);
+        logger.warn('Ollama functionality will be limited until a valid endpoint is provided');
+      } else {
+        const data = await response.json() as { models?: Array<{ name: string }> };
+        const modelCount = data?.models?.length || 0;
+        logger.log(`Ollama API endpoint validated successfully. Found ${modelCount} models available.`);
+      }
+    } catch (fetchError: unknown) {
+      const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      logger.warn(`Error validating Ollama API endpoint: ${message}`);
+      logger.warn('Ollama functionality will be limited until a valid endpoint is provided - Make sure Ollama is running at ${baseURL}');
+    }
+  },
   models: {
     [ModelType.TEXT_EMBEDDING]: async (
       runtime,
