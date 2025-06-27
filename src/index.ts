@@ -11,8 +11,12 @@ import { createOllama } from "ollama-ai-provider";
 const OLLAMA_API_URL = "http://localhost:11434";
 
 /**
- * Strips an API endpoint URL to just the domain part
- * Example: "http://localhost:11434/api" becomes "http://localhost:11434"
+ * Extracts the protocol and host from an API endpoint URL, removing any path or query components.
+ *
+ * If the input cannot be parsed as a valid URL, returns the original string.
+ *
+ * @param endpoint - The API endpoint URL to process
+ * @returns The base domain (protocol and host) of the endpoint, or the original string if parsing fails
  */
 function stripEndpointToBaseDomain(endpoint: string): string {
   try {
@@ -26,7 +30,12 @@ function stripEndpointToBaseDomain(endpoint: string): string {
 }
 
 /**
- * Gets the base URL from runtime settings and strips it to just the domain
+ * Retrieves the Ollama API base URL from runtime settings, returning only the protocol and domain.
+ *
+ * If the API endpoint is not set in the runtime, defaults to the standard Ollama URL.
+ * Removes any path or trailing segments, ensuring the result is just the base domain.
+ *
+ * @returns The normalized base URL for the Ollama API.
  */
 function getBaseURL(runtime: {
   getSetting: (key: string) => string | undefined;
@@ -36,6 +45,11 @@ function getBaseURL(runtime: {
   return stripEndpointToBaseDomain(apiEndpoint);
 }
 
+/**
+ * Ensures that the specified Ollama model is available locally, downloading it if necessary.
+ *
+ * Checks for the presence of the model via the Ollama API and attempts to download it if not found. Logs progress and errors during the process.
+ */
 async function ensureModelAvailable(
   runtime: {
     fetch: typeof fetch;
@@ -68,7 +82,9 @@ async function ensureModelAvailable(
 }
 
 /**
- * Generate text using Ollama API
+ * Generates text from the Ollama API using the specified model and parameters.
+ *
+ * Returns the generated text, or an error message if generation fails.
  */
 async function generateOllamaText(
   ollama: ReturnType<typeof createOllama>,
@@ -102,7 +118,9 @@ async function generateOllamaText(
 }
 
 /**
- * Generate object using Ollama API with consistent error handling
+ * Generates an object from the Ollama API using the specified model and parameters.
+ *
+ * Returns the generated object, or an empty object if generation fails.
  */
 async function generateOllamaObject(
   ollama: ReturnType<typeof createOllama>,
