@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-ollama",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -45,9 +45,9 @@
     "pluginParameters": {
       "OLLAMA_API_ENDPOINT": {
         "type": "string",
-        "description": "Base URL for the Ollama API that overrides the default http://localhost:11434/api endpoint.",
+        "description": "Base URL for the Ollama API. The plugin will strip this to the domain part and append the necessary API paths.",
         "required": true,
-        "default": "http://localhost:11434/api",
+        "default": "http://localhost:11434",
         "sensitive": false
       },
       "OLLAMA_SMALL_MODEL": {
@@ -95,6 +95,7 @@
   },
   "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
   "devDependencies": {
+    "@types/node": "^24.0.4",
     "prettier": "3.5.3",
     "typescript": "^5.8.2"
   }
