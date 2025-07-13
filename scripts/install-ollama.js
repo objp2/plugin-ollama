@@ -1,60 +1,60 @@
 #!/usr/bin/env bun
 
-import { spawnSync } from 'bun';
+import { $ } from 'bun';
 import { platform } from 'os';
+
+// Skip postinstall in CI/test environments
+if (process.env.CI || process.env.GITHUB_ACTIONS || process.env.TEST_MODE) {
+  console.log('Skipping Ollama installation in CI/test environment');
+  process.exit(0);
+}
 
 const isWindows = platform() === 'win32';
 const isMac = platform() === 'darwin';
 const isLinux = platform() === 'linux';
 
-console.log('Installing Ollama...');
+console.log('Checking Ollama installation...');
 
-try {
-  // Check if Ollama is already installed
-  const checkResult = spawnSync(['ollama', '--version'], {
-    stdout: 'pipe',
-    stderr: 'pipe'
-  });
-  
-  if (checkResult.exitCode === 0) {
-    console.log('Ollama is already installed.');
-  } else {
-    // Ollama not installed, proceed with installation
-    if (isWindows) {
-      console.log('Please download and install Ollama from: https://ollama.com/download/windows');
-      console.log('After installation, run: ollama pull nomic-embed-text');
-      process.exit(0);
-    } else if (isMac || isLinux) {
-      console.log('Installing Ollama using the official installer...');
-      const installResult = spawnSync(['sh', '-c', 'curl -fsSL https://ollama.com/install.sh | sh'], {
-        stdout: 'inherit',
-        stderr: 'inherit'
-      });
-      
-      if (installResult.exitCode !== 0) {
-        throw new Error('Failed to install Ollama');
+async function main() {
+  try {
+    // Check if ollama is already installed
+    try {
+      await $`ollama --version`.quiet();
+      console.log('Ollama is already installed.');
+    } catch {
+      // Ollama not installed, try to install it
+      if (isWindows) {
+        console.log('Windows detected. Please download and install Ollama from: https://ollama.com/download/windows');
+        console.log('After installation, run: ollama pull nomic-embed-text');
+        return;
+      } else if (isMac || isLinux) {
+        console.log('Installing Ollama using the official installer...');
+        try {
+          await $`curl -fsSL https://ollama.com/install.sh | sh`;
+          console.log('Ollama installed successfully!');
+        } catch (error) {
+          console.warn('Could not install Ollama automatically. This might be a CI environment.');
+          console.log('Please install Ollama manually from: https://ollama.com/download');
+          return;
+        }
+      } else {
+        console.log('Unsupported platform. Please install Ollama manually from: https://ollama.com/download');
+        return;
       }
-    } else {
-      console.error('Unsupported platform. Please install Ollama manually from: https://ollama.com/download');
-      process.exit(1);
     }
-  }
 
-  // Pull the required embedding model
-  console.log('\nPulling required embedding model...');
-  console.log('Pulling nomic-embed-text...');
-  const pullNomic = spawnSync(['ollama', 'pull', 'nomic-embed-text'], {
-    stdout: 'inherit',
-    stderr: 'inherit'
-  });
-  
-  if (pullNomic.exitCode !== 0) {
-    throw new Error('Failed to pull nomic-embed-text model');
+    // Try to pull the required model
+    console.log('\nTrying to pull required embedding model...');
+    try {
+      await $`ollama pull nomic-embed-text`;
+      console.log('Successfully pulled nomic-embed-text model!');
+    } catch (error) {
+      console.log('Could not pull model. You may need to run "ollama pull nomic-embed-text" manually after starting Ollama.');
+    }
+    
+  } catch (error) {
+    console.error('Unexpected error:', error.message);
   }
-  
-  console.log('\nOllama installation and model setup complete!');
-} catch (error) {
-  console.error('Error during installation:', error.message);
-  console.error('\nPlease install Ollama manually from: https://ollama.com/download');
-  process.exit(1);
 }
+
+main().catch(console.error);
