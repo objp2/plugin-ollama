@@ -3,6 +3,12 @@
 import { $ } from 'bun';
 import { platform } from 'os';
 
+// Skip postinstall in CI/test environments
+if (process.env.CI || process.env.GITHUB_ACTIONS || process.env.TEST_MODE) {
+  console.log('Skipping Ollama installation in CI/test environment');
+  process.exit(0);
+}
+
 const isWindows = platform() === 'win32';
 const isMac = platform() === 'darwin';
 const isLinux = platform() === 'linux';
