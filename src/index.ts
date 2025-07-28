@@ -214,16 +214,18 @@ export const ollamaPlugin: Plugin = {
               ? (params as TextEmbeddingParams).text || ""
               : "";
 
+        // If no text is provided (e.g., for dimension detection), use a default text
+        const embeddingText = text || "test";
+        
         if (!text) {
-          logger.error("No text provided for embedding");
-          return Array(1536).fill(0);
+          logger.debug("No text provided for embedding, using default text for dimension detection");
         }
 
         // Use ollama.embedding() as shown in the docs
         try {
           const { embedding } = await embed({
             model: ollama.embedding(modelName),
-            value: text,
+            value: embeddingText,
           });
           return embedding;
         } catch (embeddingError) {
