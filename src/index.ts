@@ -204,7 +204,8 @@ export const ollamaPlugin: Plugin = {
         });
 
         const modelName =
-          runtime.getSetting("OLLAMA_EMBEDDING_MODEL") || "nomic-embed-text";
+          runtime.getSetting("OLLAMA_EMBEDDING_MODEL") ||
+          "nomic-embed-text:latest";
         logger.log(`[Ollama] Using TEXT_EMBEDDING model: ${modelName}`);
         await ensureModelAvailable(runtime, modelName, baseURL);
         const text =
@@ -216,9 +217,11 @@ export const ollamaPlugin: Plugin = {
 
         // If no text is provided (e.g., for dimension detection), use a default text
         const embeddingText = text || "test";
-        
+
         if (!text) {
-          logger.debug("No text provided for embedding, using default text for dimension detection");
+          logger.debug(
+            "No text provided for embedding, using default text for dimension detection",
+          );
         }
 
         // Use ollama.embedding() as shown in the docs
@@ -256,7 +259,7 @@ export const ollamaPlugin: Plugin = {
         const model =
           runtime.getSetting("OLLAMA_SMALL_MODEL") ||
           runtime.getSetting("SMALL_MODEL") ||
-          "gemma3";
+          "gemma3:latest";
 
         logger.log(`[Ollama] Using TEXT_SMALL model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
@@ -292,7 +295,7 @@ export const ollamaPlugin: Plugin = {
         const model =
           runtime.getSetting("OLLAMA_LARGE_MODEL") ||
           runtime.getSetting("LARGE_MODEL") ||
-          "gemma3";
+          "gemma3:latest";
         const baseURL = getBaseURL(runtime);
         const ollama = createOllama({
           fetch: runtime.fetch,
@@ -328,7 +331,7 @@ export const ollamaPlugin: Plugin = {
         const model =
           runtime.getSetting("OLLAMA_SMALL_MODEL") ||
           runtime.getSetting("SMALL_MODEL") ||
-          "gemma3";
+          "gemma3:latest";
 
         logger.log(`[Ollama] Using OBJECT_SMALL model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
@@ -356,7 +359,7 @@ export const ollamaPlugin: Plugin = {
         const model =
           runtime.getSetting("OLLAMA_LARGE_MODEL") ||
           runtime.getSetting("LARGE_MODEL") ||
-          "gemma3";
+          "gemma3:latest";
 
         logger.log(`[Ollama] Using OBJECT_LARGE model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
