@@ -1,14 +1,10 @@
-import type {
-  ObjectGenerationParams,
-  Plugin,
-  TextEmbeddingParams,
-} from "@elizaos/core";
-import { type GenerateTextParams, ModelType, logger } from "@elizaos/core";
-import { generateObject, generateText, embed } from "ai";
-import { createOllama } from "ollama-ai-provider";
+import type { ObjectGenerationParams, Plugin, TextEmbeddingParams } from '@elizaos/core';
+import { type GenerateTextParams, ModelType, logger } from '@elizaos/core';
+import { generateObject, generateText, embed } from 'ai';
+import { createOllama } from 'ollama-ai-provider';
 
 // Default Ollama API URL
-const OLLAMA_API_URL = "http://localhost:11434/api";
+const OLLAMA_API_URL = 'http://localhost:11434/api';
 
 /**
  * Retrieves the Ollama API base URL from runtime settings.
@@ -18,19 +14,15 @@ const OLLAMA_API_URL = "http://localhost:11434/api";
  *
  * @returns The base URL for the Ollama API.
  */
-function getBaseURL(runtime: {
-  getSetting: (key: string) => string | undefined;
-}): string {
+function getBaseURL(runtime: { getSetting: (key: string) => string | undefined }): string {
   const apiEndpoint =
-    runtime.getSetting("OLLAMA_API_ENDPOINT") ||
-    runtime.getSetting("OLLAMA_API_URL") ||
+    runtime.getSetting('OLLAMA_API_ENDPOINT') ||
+    runtime.getSetting('OLLAMA_API_URL') ||
     OLLAMA_API_URL;
 
   // Ensure the URL ends with /api for ollama-ai-provider
-  if (!apiEndpoint.endsWith("/api")) {
-    return apiEndpoint.endsWith("/")
-      ? `${apiEndpoint}api`
-      : `${apiEndpoint}/api`;
+  if (!apiEndpoint.endsWith('/api')) {
+    return apiEndpoint.endsWith('/') ? `${apiEndpoint}api` : `${apiEndpoint}/api`;
   }
   return apiEndpoint;
 }
@@ -46,22 +38,22 @@ async function ensureModelAvailable(
     fetch?: typeof fetch;
   },
   model: string,
-  providedBaseURL?: string,
+  providedBaseURL?: string
 ) {
   const baseURL = providedBaseURL || getBaseURL(runtime);
   // Remove /api suffix for direct API calls
-  const apiBase = baseURL.endsWith("/api") ? baseURL.slice(0, -4) : baseURL;
+  const apiBase = baseURL.endsWith('/api') ? baseURL.slice(0, -4) : baseURL;
   try {
     const showRes = await fetch(`${apiBase}/api/show`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model }),
     });
     if (showRes.ok) return;
     logger.info(`[Ollama] Model ${model} not found locally. Downloading...`);
     const pullRes = await fetch(`${apiBase}/api/pull`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, stream: false }),
     });
     if (!pullRes.ok) {
@@ -70,7 +62,7 @@ async function ensureModelAvailable(
       logger.info(`[Ollama] Downloaded model ${model}`);
     }
   } catch (err) {
-    logger.error("Error ensuring model availability:", err);
+    logger.error({ error: err }, 'Error ensuring model availability');
   }
 }
 
@@ -90,7 +82,7 @@ async function generateOllamaText(
     frequencyPenalty: number;
     presencePenalty: number;
     stopSequences: string[];
-  },
+  }
 ) {
   try {
     const { text: ollamaResponse } = await generateText({
@@ -105,8 +97,8 @@ async function generateOllamaText(
     });
     return ollamaResponse;
   } catch (error: unknown) {
-    logger.error("Error in generateOllamaText:", error);
-    return "Error generating text. Please try again later.";
+    logger.error({ error }, 'Error in generateOllamaText');
+    return 'Error generating text. Please try again later.';
   }
 }
 
@@ -118,25 +110,25 @@ async function generateOllamaText(
 async function generateOllamaObject(
   ollama: ReturnType<typeof createOllama>,
   model: string,
-  params: ObjectGenerationParams,
+  params: ObjectGenerationParams
 ) {
   try {
     const { object } = await generateObject({
       model: ollama(model),
-      output: "no-schema",
+      output: 'no-schema',
       prompt: params.prompt,
       temperature: params.temperature,
     });
     return object;
   } catch (error: unknown) {
-    logger.error("Error generating object:", error);
+    logger.error({ error }, 'Error generating object');
     return {};
   }
 }
 
 export const ollamaPlugin: Plugin = {
-  name: "ollama",
-  description: "Ollama plugin",
+  name: 'ollama',
+  description: 'Ollama plugin',
   config: {
     OLLAMA_API_ENDPOINT: process.env.OLLAMA_API_ENDPOINT,
     OLLAMA_SMALL_MODEL: process.env.OLLAMA_SMALL_MODEL,
@@ -148,11 +140,11 @@ export const ollamaPlugin: Plugin = {
     const baseURL = getBaseURL(runtime);
 
     // Check if endpoint is configured
-    if (!baseURL || baseURL === "http://localhost:11434/api") {
-      const endpoint = runtime.getSetting("OLLAMA_API_ENDPOINT");
+    if (!baseURL || baseURL === 'http://localhost:11434/api') {
+      const endpoint = runtime.getSetting('OLLAMA_API_ENDPOINT');
       if (!endpoint) {
         logger.warn(
-          "OLLAMA_API_ENDPOINT is not set in environment - Ollama functionality will use default localhost:11434",
+          'OLLAMA_API_ENDPOINT is not set in environment - Ollama functionality will use default localhost:11434'
         );
       }
     }
@@ -160,41 +152,36 @@ export const ollamaPlugin: Plugin = {
     try {
       // Validate Ollama API endpoint by checking if it's accessible
       // Remove /api suffix for direct API calls
-      const apiBase = baseURL.endsWith("/api") ? baseURL.slice(0, -4) : baseURL;
+      const apiBase = baseURL.endsWith('/api') ? baseURL.slice(0, -4) : baseURL;
       const response = await fetch(`${apiBase}/api/tags`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
       });
 
       if (!response.ok) {
-        logger.warn(
-          `Ollama API endpoint validation failed: ${response.statusText}`,
-        );
-        logger.warn(
-          "Ollama functionality will be limited until a valid endpoint is provided",
-        );
+        logger.warn(`Ollama API endpoint validation failed: ${response.statusText}`);
+        logger.warn('Ollama functionality will be limited until a valid endpoint is provided');
       } else {
         const data = (await response.json()) as {
           models?: Array<{ name: string }>;
         };
         const modelCount = data?.models?.length || 0;
         logger.log(
-          `Ollama API endpoint validated successfully. Found ${modelCount} models available.`,
+          `Ollama API endpoint validated successfully. Found ${modelCount} models available.`
         );
       }
     } catch (fetchError: unknown) {
-      const message =
-        fetchError instanceof Error ? fetchError.message : String(fetchError);
+      const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
       logger.warn(`Error validating Ollama API endpoint: ${message}`);
       logger.warn(
-        "Ollama functionality will be limited until a valid endpoint is provided - Make sure Ollama is running at ${baseURL}",
+        'Ollama functionality will be limited until a valid endpoint is provided - Make sure Ollama is running at ${baseURL}'
       );
     }
   },
   models: {
     [ModelType.TEXT_EMBEDDING]: async (
       runtime,
-      params: TextEmbeddingParams | string | null,
+      params: TextEmbeddingParams | string | null
     ): Promise<number[]> => {
       try {
         const baseURL = getBaseURL(runtime);
@@ -203,24 +190,22 @@ export const ollamaPlugin: Plugin = {
           baseURL,
         });
 
-        const modelName =
-          runtime.getSetting("OLLAMA_EMBEDDING_MODEL") ||
-          "nomic-embed-text:latest";
+        const modelName = runtime.getSetting('OLLAMA_EMBEDDING_MODEL') || 'nomic-embed-text:latest';
         logger.log(`[Ollama] Using TEXT_EMBEDDING model: ${modelName}`);
         await ensureModelAvailable(runtime, modelName, baseURL);
         const text =
-          typeof params === "string"
+          typeof params === 'string'
             ? params
             : params
-              ? (params as TextEmbeddingParams).text || ""
-              : "";
+              ? (params as TextEmbeddingParams).text || ''
+              : '';
 
         // If no text is provided (e.g., for dimension detection), use a default text
-        const embeddingText = text || "test";
+        const embeddingText = text || 'test';
 
         if (!text) {
           logger.debug(
-            "No text provided for embedding, using default text for dimension detection",
+            'No text provided for embedding, using default text for dimension detection'
           );
         }
 
@@ -232,19 +217,16 @@ export const ollamaPlugin: Plugin = {
           });
           return embedding;
         } catch (embeddingError) {
-          logger.error("Error generating embedding:", embeddingError);
+          logger.error({ error: embeddingError }, 'Error generating embedding');
           return Array(1536).fill(0);
         }
       } catch (error) {
-        logger.error("Error in TEXT_EMBEDDING model:", error);
+        logger.error({ error }, 'Error in TEXT_EMBEDDING model');
         // Return a fallback vector rather than crashing
         return Array(1536).fill(0);
       }
     },
-    [ModelType.TEXT_SMALL]: async (
-      runtime,
-      { prompt, stopSequences = [] }: GenerateTextParams,
-    ) => {
+    [ModelType.TEXT_SMALL]: async (runtime, { prompt, stopSequences = [] }: GenerateTextParams) => {
       try {
         const temperature = 0.7;
         const frequency_penalty = 0.7;
@@ -257,13 +239,13 @@ export const ollamaPlugin: Plugin = {
         });
 
         const model =
-          runtime.getSetting("OLLAMA_SMALL_MODEL") ||
-          runtime.getSetting("SMALL_MODEL") ||
-          "gemma3:latest";
+          runtime.getSetting('OLLAMA_SMALL_MODEL') ||
+          runtime.getSetting('SMALL_MODEL') ||
+          'gemma3:latest';
 
         logger.log(`[Ollama] Using TEXT_SMALL model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
-        logger.log("generating text");
+        logger.log('generating text');
         logger.log(prompt);
 
         return await generateOllamaText(ollama, model, {
@@ -276,8 +258,8 @@ export const ollamaPlugin: Plugin = {
           stopSequences,
         });
       } catch (error) {
-        logger.error("Error in TEXT_SMALL model:", error);
-        return "Error generating text. Please try again later.";
+        logger.error({ error }, 'Error in TEXT_SMALL model');
+        return 'Error generating text. Please try again later.';
       }
     },
     [ModelType.TEXT_LARGE]: async (
@@ -289,13 +271,13 @@ export const ollamaPlugin: Plugin = {
         temperature = 0.7,
         frequencyPenalty = 0.7,
         presencePenalty = 0.7,
-      }: GenerateTextParams,
+      }: GenerateTextParams
     ) => {
       try {
         const model =
-          runtime.getSetting("OLLAMA_LARGE_MODEL") ||
-          runtime.getSetting("LARGE_MODEL") ||
-          "gemma3:latest";
+          runtime.getSetting('OLLAMA_LARGE_MODEL') ||
+          runtime.getSetting('LARGE_MODEL') ||
+          'gemma3:latest';
         const baseURL = getBaseURL(runtime);
         const ollama = createOllama({
           fetch: runtime.fetch,
@@ -314,14 +296,11 @@ export const ollamaPlugin: Plugin = {
           stopSequences,
         });
       } catch (error) {
-        logger.error("Error in TEXT_LARGE model:", error);
-        return "Error generating text. Please try again later.";
+        logger.error({ error }, 'Error in TEXT_LARGE model');
+        return 'Error generating text. Please try again later.';
       }
     },
-    [ModelType.OBJECT_SMALL]: async (
-      runtime,
-      params: ObjectGenerationParams,
-    ) => {
+    [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
       try {
         const baseURL = getBaseURL(runtime);
         const ollama = createOllama({
@@ -329,27 +308,24 @@ export const ollamaPlugin: Plugin = {
           baseURL,
         });
         const model =
-          runtime.getSetting("OLLAMA_SMALL_MODEL") ||
-          runtime.getSetting("SMALL_MODEL") ||
-          "gemma3:latest";
+          runtime.getSetting('OLLAMA_SMALL_MODEL') ||
+          runtime.getSetting('SMALL_MODEL') ||
+          'gemma3:latest';
 
         logger.log(`[Ollama] Using OBJECT_SMALL model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
         if (params.schema) {
-          logger.info("Using OBJECT_SMALL without schema validation");
+          logger.info('Using OBJECT_SMALL without schema validation');
         }
 
         return await generateOllamaObject(ollama, model, params);
       } catch (error) {
-        logger.error("Error in OBJECT_SMALL model:", error);
+        logger.error({ error }, 'Error in OBJECT_SMALL model');
         // Return empty object instead of crashing
         return {};
       }
     },
-    [ModelType.OBJECT_LARGE]: async (
-      runtime,
-      params: ObjectGenerationParams,
-    ) => {
+    [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
       try {
         const baseURL = getBaseURL(runtime);
         const ollama = createOllama({
@@ -357,19 +333,19 @@ export const ollamaPlugin: Plugin = {
           baseURL,
         });
         const model =
-          runtime.getSetting("OLLAMA_LARGE_MODEL") ||
-          runtime.getSetting("LARGE_MODEL") ||
-          "gemma3:latest";
+          runtime.getSetting('OLLAMA_LARGE_MODEL') ||
+          runtime.getSetting('LARGE_MODEL') ||
+          'gemma3:latest';
 
         logger.log(`[Ollama] Using OBJECT_LARGE model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
         if (params.schema) {
-          logger.info("Using OBJECT_LARGE without schema validation");
+          logger.info('Using OBJECT_LARGE without schema validation');
         }
 
         return await generateOllamaObject(ollama, model, params);
       } catch (error) {
-        logger.error("Error in OBJECT_LARGE model:", error);
+        logger.error({ error }, 'Error in OBJECT_LARGE model');
         // Return empty object instead of crashing
         return {};
       }
@@ -377,118 +353,107 @@ export const ollamaPlugin: Plugin = {
   },
   tests: [
     {
-      name: "ollama_plugin_tests",
+      name: 'ollama_plugin_tests',
       tests: [
         {
-          name: "ollama_test_url_validation",
+          name: 'ollama_test_url_validation',
           fn: async (runtime) => {
             try {
               const baseURL = getBaseURL(runtime);
               // Remove /api suffix for direct API calls
-              const apiBase = baseURL.endsWith("/api")
-                ? baseURL.slice(0, -4)
-                : baseURL;
+              const apiBase = baseURL.endsWith('/api') ? baseURL.slice(0, -4) : baseURL;
               const response = await fetch(`${apiBase}/api/tags`);
               const data = await response.json();
-              logger.log(
-                "Models Available:",
-                data &&
-                  typeof data === "object" &&
-                  "models" in data &&
-                  Array.isArray(data.models)
+              const modelCount =
+                data && typeof data === 'object' && 'models' in data && Array.isArray(data.models)
                   ? data.models.length
-                  : 0,
-              );
+                  : 0;
+              logger.log(`Models Available: ${modelCount}`);
               if (!response.ok) {
-                logger.error(
-                  `Failed to validate Ollama API: ${response.statusText}`,
-                );
+                logger.error(`Failed to validate Ollama API: ${response.statusText}`);
                 return;
               }
             } catch (error) {
-              logger.error("Error in ollama_test_url_validation:", error);
+              logger.error({ error }, 'Error in ollama_test_url_validation');
             }
           },
         },
         {
-          name: "ollama_test_text_embedding",
+          name: 'ollama_test_text_embedding',
           fn: async (runtime) => {
             try {
-              const embedding = await runtime.useModel(
-                ModelType.TEXT_EMBEDDING,
-                {
-                  text: "Hello, world!",
-                },
-              );
-              logger.log("embedding", embedding);
+              const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+                text: 'Hello, world!',
+              });
+              logger.log({ embedding }, 'Generated embedding');
             } catch (error) {
-              logger.error("Error in test_text_embedding:", error);
+              logger.error({ error }, 'Error in test_text_embedding');
             }
           },
         },
         {
-          name: "ollama_test_text_large",
+          name: 'ollama_test_text_large',
           fn: async (runtime) => {
             try {
               const text = await runtime.useModel(ModelType.TEXT_LARGE, {
-                prompt: "What is the nature of reality in 10 words?",
+                prompt: 'What is the nature of reality in 10 words?',
               });
               if (text.length === 0) {
-                logger.error("Failed to generate text");
+                logger.error('Failed to generate text');
                 return;
               }
-              logger.log("generated with test_text_large:", text);
+              logger.log({ text }, 'Generated with test_text_large');
             } catch (error) {
-              logger.error("Error in test_text_large:", error);
+              logger.error({ error }, 'Error in test_text_large');
             }
           },
         },
         {
-          name: "ollama_test_text_small",
+          name: 'ollama_test_text_small',
           fn: async (runtime) => {
             try {
               const text = await runtime.useModel(ModelType.TEXT_SMALL, {
-                prompt: "What is the nature of reality in 10 words?",
+                prompt: 'What is the nature of reality in 10 words?',
               });
               if (text.length === 0) {
-                logger.error("Failed to generate text");
+                logger.error('Failed to generate text');
                 return;
               }
-              logger.log("generated with test_text_small:", text);
+              logger.log({ text }, 'Generated with test_text_small');
             } catch (error) {
-              logger.error("Error in test_text_small:", error);
+              logger.error({ error }, 'Error in test_text_small');
             }
           },
         },
         {
-          name: "ollama_test_object_small",
+          name: 'ollama_test_object_small',
           fn: async (runtime) => {
             try {
               const object = await runtime.useModel(ModelType.OBJECT_SMALL, {
                 prompt:
-                  "Generate a JSON object representing a user profile with name, age, and hobbies",
+                  'Generate a JSON object representing a user profile with name, age, and hobbies',
                 temperature: 0.7,
                 schema: undefined,
               });
-              logger.log("Generated object:", object);
+              logger.log({ object }, 'Generated object');
             } catch (error) {
-              logger.error("Error in test_object_small:", error);
+              logger.error({ error }, 'Error in test_object_small');
             }
           },
         },
         {
-          name: "ollama_test_object_large",
+          name: 'ollama_test_object_large',
           fn: async (runtime) => {
             try {
               const object = await runtime.useModel(ModelType.OBJECT_LARGE, {
                 prompt:
-                  "Generate a detailed JSON object representing a restaurant with name, cuisine type, menu items with prices, and customer reviews",
+                  'Generate a detailed JSON object representing a restaurant with name, cuisine type, menu items with prices, and customer reviews',
                 temperature: 0.7,
                 schema: undefined,
               });
-              logger.log("Generated object:", object);
+              logger.log({ object }, 'Generated object');
             } catch (error) {
-              logger.error("Error in test_object_large:", error);
+              logger.error({ error }, 'Error in test_object_large');
             }
           },
         },
