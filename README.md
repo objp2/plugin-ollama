@@ -16,7 +16,7 @@ Ollama enables running large language models locally on your machine. This plugi
 
 1. Install this plugin in your ElizaOS project:
    ```bash
-   bun add @elizaos-plugins/plugin-ollama
+   bun add @elizaos/plugin-ollama
    ```
 
 2. Make sure Ollama is running:
