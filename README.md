@@ -1,6 +1,6 @@
 # Ollama Plugin
 
-This plugin provides integration with [Ollama](https://ollama.com/)'s local models through the ElizaOS platform. It allows you to leverage locally running LLMs for text generation, embeddings, and object generation.
+This plugin provides integration with [Ollama](https://ollama.com/)'s local models through the ElizaOS platform. It allows you to leverage locally running LLMs for text generation, embeddings, object generation, and **multimodal vision capabilities** with image analysis.
 
 ## Overview
 
@@ -11,6 +11,7 @@ Ollama enables running large language models locally on your machine. This plugi
 - [Ollama](https://ollama.com/) installed and running on your system
 - ElizaOS platform
 - At least one Ollama model pulled and available (e.g., `llama3`, `gemma3:latest`)
+- For image analysis: Vision-capable models (e.g., `llava`, `llama3.2-vision`)
 
 ## Installation
 
@@ -64,6 +65,19 @@ OLLAMA_EMBEDDING_MODEL=nomic-embed-text:latest
 - `OLLAMA_LARGE_MODEL`: Model for complex tasks (default: gemma3:latest)
 - `OLLAMA_EMBEDDING_MODEL`: Model for text embeddings (default: nomic-embed-text:latest)
 
+#### Vision Model Support
+
+For image analysis capabilities, use vision-enabled models:
+
+- **Recommended vision models**: `llava`, `llava-llama3`, `llava-phi3`, `llama3.2-vision`
+- **Example configuration**:
+  ```json
+  {
+    "OLLAMA_SMALL_MODEL": "llava:latest",
+    "OLLAMA_LARGE_MODEL": "llama3.2-vision:latest"
+  }
+  ```
+
 The plugin provides these model classes:
 
 - `TEXT_SMALL`: Optimized for fast responses with simpler prompts
@@ -91,6 +105,27 @@ const text = await runtime.useModel(ModelType.TEXT_SMALL, {
 });
 ```
 
+#### With Image Attachments
+
+The plugin now supports multimodal text generation with vision-capable models (like `llava`):
+
+```js
+const text = await runtime.useModel(ModelType.TEXT_SMALL, {
+  prompt: 'Describe what you see in this image',
+  content: {
+    text: 'Describe what you see in this image',
+    attachments: [
+      {
+        id: 'image1',
+        url: 'https://example.com/image.jpg',
+        contentType: 'image',
+        title: 'Photo to analyze'
+      }
+    ]
+  }
+});
+```
+
 ### Text Generation (Large Model)
 
 Generate comprehensive text responses using more powerful models for complex tasks:
@@ -103,6 +138,29 @@ const text = await runtime.useModel(ModelType.TEXT_LARGE, {
   temperature: 0.7, // optional (default: 0.7)
   frequencyPenalty: 0.7, // optional (default: 0.7)
   presencePenalty: 0.7, // optional (default: 0.7)
+});
+```
+
+#### With Image Attachments
+
+Large models also support vision capabilities when using compatible models:
+
+```js
+const text = await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt: 'Analyze these images and provide detailed insights',
+  content: {
+    text: 'Please analyze these images',
+    attachments: [
+      {
+        id: 'chart1',
+        url: 'data:image/jpeg;base64,/9j/4AAQ...',
+        contentType: 'image',
+        title: 'Sales Chart'
+      }
+    ]
+  },
+  maxTokens: 4096,
+  temperature: 0.3
 });
 ```
 
@@ -153,6 +211,14 @@ const object = await runtime.useModel(ModelType.OBJECT_LARGE, {
 - The plugin will attempt to download models automatically if they're not found
 - You can pre-download models using `ollama pull modelname`
 - Check model availability with `ollama list`
+
+### Image Support Issues
+
+- **Vision capabilities require compatible models**: Use `llava`, `llama3.2-vision`, `bakllava`, or other vision-enabled models
+- **Download vision models**: `ollama pull llava` or `ollama pull llama3.2-vision:latest`
+- **Image format support**: The plugin supports images via URLs or base64 data URIs
+- **Network access**: If using image URLs, ensure Ollama can access the image sources
+- **Model context**: Vision models may require more memory and processing time
 
 
 ## License
