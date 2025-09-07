@@ -45,20 +45,35 @@ interface ExtendedGenerateTextParams extends GenerateTextParams {
 async function extractImagesFromContent(content: Content, fetch?: typeof globalThis.fetch): Promise<string[]> {
   const images: string[] = [];
   
+  logger.log(`[Ollama] extractImagesFromContent called with content: ${JSON.stringify(content, null, 2)}`);
+  
   if (!content.attachments) {
+    logger.log(`[Ollama] No attachments found in content`);
     return images;
   }
   
+  logger.log(`[Ollama] Found ${content.attachments.length} attachments`);
+  
   for (const attachment of content.attachments) {
+    logger.log(`[Ollama] Processing attachment: ${JSON.stringify(attachment, null, 2)}`);
+    logger.log(`[Ollama] Attachment contentType: ${attachment.contentType}, expected: ${ContentType.IMAGE}`);
+    logger.log(`[Ollama] Comparison result: ${attachment.contentType === ContentType.IMAGE}`);
+    
     if (attachment.contentType === ContentType.IMAGE && attachment.url) {
+      logger.log(`[Ollama] Processing image attachment: ${attachment.title || attachment.url}`);
       const base64Image = await imageUrlToBase64(attachment.url, fetch);
       if (base64Image) {
         images.push(base64Image);
-        logger.debug(`Added image attachment: ${attachment.title || attachment.url}`);
+        logger.log(`[Ollama] Added image attachment: ${attachment.title || attachment.url}`);
+      } else {
+        logger.warn(`[Ollama] Failed to convert image to base64: ${attachment.url}`);
       }
+    } else {
+      logger.log(`[Ollama] Skipping non-image attachment or attachment without URL`);
     }
   }
   
+  logger.log(`[Ollama] Total images extracted: ${images.length}`);
   return images;
 }
 
@@ -352,8 +367,13 @@ export const ollamaPlugin: Plugin = {
         
         // Extract images from content if available
         let images = providedImages || [];
+        logger.log(`[Ollama] Content provided to TEXT_SMALL: ${JSON.stringify(content, null, 2)}`);
+        logger.log(`[Ollama] Provided images to TEXT_SMALL: ${providedImages?.length || 0}`);
+        
         if (content && images.length === 0) {
+          logger.log(`[Ollama] Attempting to extract images from content in TEXT_SMALL...`);
           images = await extractImagesFromContent(content, runtime.fetch);
+          logger.log(`[Ollama] Extracted ${images.length} images from content in TEXT_SMALL`);
         }
         
         if (images.length > 0) {
@@ -409,8 +429,13 @@ export const ollamaPlugin: Plugin = {
         
         // Extract images from content if available
         let images = providedImages || [];
+        logger.log(`[Ollama] Content provided to TEXT_LARGE: ${JSON.stringify(content, null, 2)}`);
+        logger.log(`[Ollama] Provided images to TEXT_LARGE: ${providedImages?.length || 0}`);
+        
         if (content && images.length === 0) {
+          logger.log(`[Ollama] Attempting to extract images from content in TEXT_LARGE...`);
           images = await extractImagesFromContent(content, runtime.fetch);
+          logger.log(`[Ollama] Extracted ${images.length} images from content in TEXT_LARGE`);
         }
         
         if (images.length > 0) {
