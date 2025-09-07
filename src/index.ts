@@ -32,14 +32,6 @@ async function imageUrlToBase64(url: string, fetch?: typeof globalThis.fetch): P
 }
 
 /**
- * Extended text generation parameters that include optional image attachments
- */
-interface ExtendedGenerateTextParams extends GenerateTextParams {
-  images?: string[];
-  content?: Content;
-}
-
-/**
  * Extracts images from ElizaOS content and converts them to base64 format
  */
 async function extractImagesFromContent(content: Content, fetch?: typeof globalThis.fetch): Promise<string[]> {
@@ -56,10 +48,19 @@ async function extractImagesFromContent(content: Content, fetch?: typeof globalT
   
   for (const attachment of content.attachments) {
     logger.log(`[Ollama] Processing attachment: ${JSON.stringify(attachment, null, 2)}`);
-    logger.log(`[Ollama] Attachment contentType: ${attachment.contentType}, expected: ${ContentType.IMAGE}`);
-    logger.log(`[Ollama] Comparison result: ${attachment.contentType === ContentType.IMAGE}`);
+    logger.log(`[Ollama] Attachment contentType: "${attachment.contentType}", expected: "${ContentType.IMAGE}"`);
+    logger.log(`[Ollama] ContentType.IMAGE value: "${ContentType.IMAGE}"`);
+    logger.log(`[Ollama] Type of contentType: ${typeof attachment.contentType}`);
+    logger.log(`[Ollama] Strict equality: ${attachment.contentType === ContentType.IMAGE}`);
+    logger.log(`[Ollama] Loose equality: ${attachment.contentType == ContentType.IMAGE}`);
+    logger.log(`[Ollama] Lowercase comparison: ${attachment.contentType?.toLowerCase() === 'image'}`);
     
-    if (attachment.contentType === ContentType.IMAGE && attachment.url) {
+    // Try multiple comparison methods to debug the issue
+    const isImageType = attachment.contentType === ContentType.IMAGE || 
+                        attachment.contentType === 'image' ||
+                        attachment.contentType?.toLowerCase() === 'image';
+    
+    if (isImageType && attachment.url) {
       logger.log(`[Ollama] Processing image attachment: ${attachment.title || attachment.url}`);
       const base64Image = await imageUrlToBase64(attachment.url, fetch);
       if (base64Image) {
@@ -69,7 +70,7 @@ async function extractImagesFromContent(content: Content, fetch?: typeof globalT
         logger.warn(`[Ollama] Failed to convert image to base64: ${attachment.url}`);
       }
     } else {
-      logger.log(`[Ollama] Skipping non-image attachment or attachment without URL`);
+      logger.log(`[Ollama] Skipping non-image attachment or attachment without URL. ContentType: "${attachment.contentType}", URL: ${attachment.url}`);
     }
   }
   
@@ -344,8 +345,9 @@ export const ollamaPlugin: Plugin = {
         return Array(1536).fill(0);
       }
     },
-    [ModelType.TEXT_SMALL]: async (runtime, params: ExtendedGenerateTextParams) => {
+    [ModelType.TEXT_SMALL]: async (runtime, params: TextGenerationParams & { content?: Content; images?: string[] }) => {
       try {
+        logger.log(`[Ollama] TEXT_SMALL called with full params: ${JSON.stringify(params, null, 2)}`);
         const { prompt, stopSequences = [], images: providedImages, content } = params;
         const temperature = 0.7;
         const frequency_penalty = 0.7;
@@ -400,9 +402,10 @@ export const ollamaPlugin: Plugin = {
     },
     [ModelType.TEXT_LARGE]: async (
       runtime,
-      params: ExtendedGenerateTextParams
+      params: TextGenerationParams & { content?: Content; images?: string[] }
     ) => {
       try {
+        logger.log(`[Ollama] TEXT_LARGE called with full params: ${JSON.stringify(params, null, 2)}`);
         const {
           prompt,
           stopSequences = [],
@@ -597,7 +600,7 @@ export const ollamaPlugin: Plugin = {
                       // Small 1x1 pixel test image in base64
                       url: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/wA==',
                       title: 'Test Image',
-                      contentType: 'image' as const,
+                      contentType: ContentType.IMAGE,
                     },
                   ],
                 },
