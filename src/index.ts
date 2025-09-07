@@ -1,10 +1,129 @@
-import type { ObjectGenerationParams, Plugin, TextEmbeddingParams } from '@elizaos/core';
-import { type GenerateTextParams, ModelType, logger } from '@elizaos/core';
+import type { ObjectGenerationParams, Plugin, TextEmbeddingParams, ImageDescriptionParams } from '@elizaos/core';
+import { type GenerateTextParams, ModelType, logger, ContentType, type Content } from '@elizaos/core';
 import { generateObject, generateText, embed } from 'ai';
 import { createOllama } from 'ollama-ai-provider';
 
 // Default Ollama API URL
 const OLLAMA_API_URL = 'http://localhost:11434/api';
+
+/**
+ * Fetches an image from URL and converts it to base64 format for Ollama API
+ */
+async function imageUrlToBase64(url: string, fetch?: typeof globalThis.fetch): Promise<string | null> {
+  try {
+    const fetchFn = fetch || globalThis.fetch;
+    const response = await fetchFn(url);
+    if (!response.ok) {
+      logger.warn(`Failed to fetch image from ${url}: ${response.statusText}`);
+      return null;
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const base64String = Buffer.from(arrayBuffer).toString('base64');
+    
+    // Get content type from response or default to generic image
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    
+    return `data:${contentType};base64,${base64String}`;
+  } catch (error) {
+    logger.error({ error, url }, 'Error converting image URL to base64');
+    return null;
+  }
+}
+
+/**
+ * Safely stringify objects that may contain circular references or non-serializable properties
+ */
+function safeStringify(obj: any, maxDepth = 3): string {
+  const seen = new WeakSet();
+  
+  function replacer(key: string, value: any, depth = 0): any {
+    if (depth > maxDepth) {
+      return '[Max Depth Reached]';
+    }
+    
+    if (value === null) return null;
+    if (typeof value === 'undefined') return '[Undefined]';
+    if (typeof value === 'function') return '[Function]';
+    if (typeof value === 'symbol') return '[Symbol]';
+    if (value instanceof Error) return { name: value.name, message: value.message, stack: value.stack };
+    
+    if (typeof value === 'object') {
+      if (seen.has(value)) {
+        return '[Circular Reference]';
+      }
+      seen.add(value);
+      
+      if (Array.isArray(value)) {
+        return value.map((item, index) => replacer(String(index), item, depth + 1));
+      }
+      
+      const result: any = {};
+      for (const [k, v] of Object.entries(value)) {
+        if (k === 'fetch' || k === 'runtime') {
+          result[k] = '[Hidden]';
+        } else {
+          result[k] = replacer(k, v, depth + 1);
+        }
+      }
+      return result;
+    }
+    
+    return value;
+  }
+  
+  try {
+    return JSON.stringify(replacer('', obj), null, 2);
+  } catch (error) {
+    return `[Stringify Error: ${error.message}]`;
+  }
+}
+
+/**
+ * Extracts images from ElizaOS content and converts them to base64 format
+ */
+async function extractImagesFromContent(content: Content, fetch?: typeof globalThis.fetch): Promise<string[]> {
+  const images: string[] = [];
+  
+  logger.log(`[Ollama] extractImagesFromContent called with content: ${safeStringify(content)}`);
+  
+  if (!content.attachments) {
+    logger.log(`[Ollama] No attachments found in content`);
+    return images;
+  }
+  
+  logger.log(`[Ollama] Found ${content.attachments.length} attachments`);
+  
+  for (const attachment of content.attachments) {
+    logger.log(`[Ollama] Processing attachment: ${safeStringify(attachment)}`);
+    logger.log(`[Ollama] Attachment contentType: "${attachment.contentType}", expected: "${ContentType.IMAGE}"`);
+    logger.log(`[Ollama] ContentType.IMAGE value: "${ContentType.IMAGE}"`);
+    logger.log(`[Ollama] Type of contentType: ${typeof attachment.contentType}`);
+    logger.log(`[Ollama] Strict equality: ${attachment.contentType === ContentType.IMAGE}`);
+    logger.log(`[Ollama] Loose equality: ${attachment.contentType == ContentType.IMAGE}`);
+    logger.log(`[Ollama] Lowercase comparison: ${attachment.contentType?.toLowerCase() === 'image'}`);
+    
+    // Try multiple comparison methods to debug the issue
+    const isImageType = attachment.contentType === ContentType.IMAGE || 
+                        attachment.contentType?.toLowerCase() === 'image';
+    
+    if (isImageType && attachment.url) {
+      logger.log(`[Ollama] Processing image attachment: ${attachment.title || attachment.url}`);
+      const base64Image = await imageUrlToBase64(attachment.url, fetch);
+      if (base64Image) {
+        images.push(base64Image);
+        logger.log(`[Ollama] Added image attachment: ${attachment.title || attachment.url}`);
+      } else {
+        logger.warn(`[Ollama] Failed to convert image to base64: ${attachment.url}`);
+      }
+    } else {
+      logger.log(`[Ollama] Skipping non-image attachment or attachment without URL. ContentType: "${attachment.contentType}", URL: ${attachment.url}`);
+    }
+  }
+  
+  logger.log(`[Ollama] Total images extracted: ${images.length}`);
+  return images;
+}
 
 /**
  * Retrieves the Ollama API base URL from runtime settings.
@@ -82,20 +201,67 @@ async function generateOllamaText(
     frequencyPenalty: number;
     presencePenalty: number;
     stopSequences: string[];
+    images?: string[];
   }
 ) {
   try {
-    const { text: ollamaResponse } = await generateText({
-      model: ollama(model),
-      prompt: params.prompt,
-      system: params.system,
-      temperature: params.temperature,
-      maxTokens: params.maxTokens,
-      frequencyPenalty: params.frequencyPenalty,
-      presencePenalty: params.presencePenalty,
-      stopSequences: params.stopSequences,
-    });
-    return ollamaResponse;
+    // If images are provided, use messages format for multimodal support
+    if (params.images && params.images.length > 0) {
+      const messages: Array<
+        | { role: 'system'; content: string }
+        | { role: 'user'; content: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> }
+      > = [];
+      
+      // Add system message if provided
+      if (params.system) {
+        messages.push({
+          role: 'system',
+          content: params.system,
+        });
+      }
+      
+      // Create user message with text and images
+      const userContent: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> = [
+        { type: 'text', text: params.prompt }
+      ];
+      
+      // Add images as base64 data URLs
+      for (const imageData of params.images) {
+        userContent.push({
+          type: 'image',
+          image: imageData
+        });
+      }
+      
+      messages.push({
+        role: 'user',
+        content: userContent,
+      });
+
+      const { text: ollamaResponse } = await generateText({
+        model: ollama(model),
+        messages,
+        temperature: params.temperature,
+        maxTokens: params.maxTokens,
+        frequencyPenalty: params.frequencyPenalty,
+        presencePenalty: params.presencePenalty,
+        stopSequences: params.stopSequences,
+      });
+      return ollamaResponse;
+    } else {
+      // Use simple prompt format when no images
+      const { text: ollamaResponse } = await generateText({
+        model: ollama(model),
+        prompt: params.prompt,
+        system: params.system,
+        temperature: params.temperature,
+        maxTokens: params.maxTokens,
+        frequencyPenalty: params.frequencyPenalty,
+        presencePenalty: params.presencePenalty,
+        stopSequences: params.stopSequences,
+      });
+      return ollamaResponse;
+    }
   } catch (error: unknown) {
     logger.error({ error }, 'Error in generateOllamaText');
     return 'Error generating text. Please try again later.';
@@ -226,8 +392,13 @@ export const ollamaPlugin: Plugin = {
         return Array(1536).fill(0);
       }
     },
-    [ModelType.TEXT_SMALL]: async (runtime, { prompt, stopSequences = [] }: GenerateTextParams) => {
+    [ModelType.TEXT_SMALL]: async (runtime, params: GenerateTextParams & { content?: Content; images?: string[] }) => {
       try {
+        logger.log(`[Ollama] TEXT_SMALL called with params keys: [${Object.keys(params).join(', ')}]`);
+        logger.log(`[Ollama] TEXT_SMALL prompt length: ${params.prompt?.length || 0}`);
+        logger.log(`[Ollama] TEXT_SMALL has content: ${!!params.content}`);
+        logger.log(`[Ollama] TEXT_SMALL has images: ${!!params.images}`);
+        const { prompt, stopSequences = [], images: providedImages, content } = params;
         const temperature = 0.7;
         const frequency_penalty = 0.7;
         const presence_penalty = 0.7;
@@ -245,6 +416,22 @@ export const ollamaPlugin: Plugin = {
 
         logger.log(`[Ollama] Using TEXT_SMALL model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
+        
+        // Extract images from content if available
+        let images = providedImages || [];
+        logger.log(`[Ollama] Content provided to TEXT_SMALL: ${JSON.stringify(content, null, 2)}`);
+        logger.log(`[Ollama] Provided images to TEXT_SMALL: ${providedImages?.length || 0}`);
+        
+        if (content && images.length === 0) {
+          logger.log(`[Ollama] Attempting to extract images from content in TEXT_SMALL...`);
+          images = await extractImagesFromContent(content, runtime.fetch);
+          logger.log(`[Ollama] Extracted ${images.length} images from content in TEXT_SMALL`);
+        }
+        
+        if (images.length > 0) {
+          logger.log(`[Ollama] Processing ${images.length} image(s) with text generation`);
+        }
+        
         logger.log('generating text');
         logger.log(prompt);
 
@@ -256,24 +443,36 @@ export const ollamaPlugin: Plugin = {
           frequencyPenalty: frequency_penalty,
           presencePenalty: presence_penalty,
           stopSequences,
+          images,
         });
       } catch (error) {
-        logger.error({ error }, 'Error in TEXT_SMALL model');
+        logger.error(`[Ollama] Error in TEXT_SMALL model: ${error?.message || 'Unknown error'}`);
+        logger.error(`[Ollama] Error type: ${typeof error}`);
+        logger.error(`[Ollama] Error stack: ${error?.stack || 'No stack trace'}`);
+        logger.error(`[Ollama] Error details: ${safeStringify(error)}`);
         return 'Error generating text. Please try again later.';
       }
     },
     [ModelType.TEXT_LARGE]: async (
       runtime,
-      {
-        prompt,
-        stopSequences = [],
-        maxTokens = 8192,
-        temperature = 0.7,
-        frequencyPenalty = 0.7,
-        presencePenalty = 0.7,
-      }: GenerateTextParams
+      params: GenerateTextParams & { content?: Content; images?: string[] }
     ) => {
       try {
+        logger.log(`[Ollama] TEXT_LARGE called with params keys: [${Object.keys(params).join(', ')}]`);
+        logger.log(`[Ollama] TEXT_LARGE prompt length: ${params.prompt?.length || 0}`);
+        logger.log(`[Ollama] TEXT_LARGE has content: ${!!params.content}`);
+        logger.log(`[Ollama] TEXT_LARGE has images: ${!!params.images}`);
+        const {
+          prompt,
+          stopSequences = [],
+          maxTokens = 8192,
+          temperature = 0.7,
+          frequencyPenalty = 0.7,
+          presencePenalty = 0.7,
+          images: providedImages,
+          content
+        } = params;
+        
         const model =
           runtime.getSetting('OLLAMA_LARGE_MODEL') ||
           runtime.getSetting('LARGE_MODEL') ||
@@ -286,6 +485,22 @@ export const ollamaPlugin: Plugin = {
 
         logger.log(`[Ollama] Using TEXT_LARGE model: ${model}`);
         await ensureModelAvailable(runtime, model, baseURL);
+        
+        // Extract images from content if available
+        let images = providedImages || [];
+        logger.log(`[Ollama] Content provided to TEXT_LARGE: ${safeStringify(content)}`);
+        logger.log(`[Ollama] Provided images to TEXT_LARGE: ${providedImages?.length || 0}`);
+        
+        if (content && images.length === 0) {
+          logger.log(`[Ollama] Attempting to extract images from content in TEXT_LARGE...`);
+          images = await extractImagesFromContent(content, runtime.fetch);
+          logger.log(`[Ollama] Extracted ${images.length} images from content in TEXT_LARGE`);
+        }
+        
+        if (images.length > 0) {
+          logger.log(`[Ollama] Processing ${images.length} image(s) with text generation`);
+        }
+        
         return await generateOllamaText(ollama, model, {
           prompt,
           system: runtime.character?.system || undefined,
@@ -294,10 +509,75 @@ export const ollamaPlugin: Plugin = {
           frequencyPenalty,
           presencePenalty,
           stopSequences,
+          images,
         });
       } catch (error) {
-        logger.error({ error }, 'Error in TEXT_LARGE model');
+        logger.error(`[Ollama] Error in TEXT_LARGE model: ${error?.message || 'Unknown error'}`);
+        logger.error(`[Ollama] Error type: ${typeof error}`);
+        logger.error(`[Ollama] Error stack: ${error?.stack || 'No stack trace'}`);
+        logger.error(`[Ollama] Error details: ${safeStringify(error)}`);
         return 'Error generating text. Please try again later.';
+      }
+    },
+    [ModelType.IMAGE_DESCRIPTION]: async (
+      runtime,
+      params: ImageDescriptionParams | { imageUrl: string; prompt?: string }
+    ) => {
+      try {
+        logger.log(`[Ollama] IMAGE_DESCRIPTION called with imageUrl: ${params.imageUrl}`);
+        logger.log(`[Ollama] IMAGE_DESCRIPTION prompt: ${params.prompt || 'Describe this image'}`);
+        
+        const prompt = params.prompt || 'Describe this image in detail.';
+        const temperature = 0.7;
+        const max_response_length = 8000;
+        const baseURL = getBaseURL(runtime);
+        const ollama = createOllama({
+          fetch: runtime.fetch,
+          baseURL,
+        });
+
+        const model =
+          runtime.getSetting('OLLAMA_LARGE_MODEL') ||
+          runtime.getSetting('LARGE_MODEL') ||
+          'llava:latest'; // Use a vision-capable model for image description
+
+        logger.log(`[Ollama] Using IMAGE_DESCRIPTION model: ${model}`);
+        await ensureModelAvailable(runtime, model, baseURL);
+        
+        // Convert image URL to base64 if needed
+        const imageData = await imageUrlToBase64(params.imageUrl, runtime.fetch);
+        if (!imageData) {
+          logger.error(`[Ollama] Failed to load image from URL: ${params.imageUrl}`);
+          return {
+            title: 'Error',
+            description: 'Failed to load the image for description.'
+          };
+        }
+        
+        logger.log(`[Ollama] Successfully loaded image for description`);
+        
+        const response = await generateOllamaText(ollama, model, {
+          prompt,
+          system: 'You are a helpful assistant that describes images in detail.',
+          temperature,
+          maxTokens: max_response_length,
+          frequencyPenalty: 0.7,
+          presencePenalty: 0.7,
+          stopSequences: [],
+          images: [imageData],
+        });
+        
+        return {
+          title: 'Image Description',
+          description: response
+        };
+      } catch (error) {
+        logger.error(`[Ollama] Error in IMAGE_DESCRIPTION model: ${error?.message || 'Unknown error'}`);
+        logger.error(`[Ollama] Error details: ${safeStringify(error)}`);
+        return {
+          title: 'Error',
+          description: 'Error describing image. Please try again later.'
+        };
       }
     },
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
@@ -422,6 +702,39 @@ export const ollamaPlugin: Plugin = {
               logger.log({ text }, 'Generated with test_text_small');
             } catch (error) {
               logger.error({ error }, 'Error in test_text_small');
+            }
+          },
+        },
+        {
+          name: 'ollama_test_text_with_images',
+          fn: async (runtime) => {
+            try {
+              // Test with content that includes images
+              const textParams = {
+                prompt: 'Describe this image',
+                content: {
+                  text: 'Describe this image',
+                  attachments: [
+                    {
+                      id: 'test-image',
+                      // Small 1x1 pixel test image in base64
+                      url: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/wA==',
+                      title: 'Test Image',
+                      contentType: ContentType.IMAGE,
+                    },
+                  ],
+                },
+              };
+              
+              const text = await runtime.useModel(ModelType.TEXT_SMALL, textParams);
+              if (text.length === 0) {
+                logger.error('Failed to generate text with images');
+                return;
+              }
+              logger.log({ text }, 'Generated text with image content');
+            } catch (error) {
+              // This test may fail if the model doesn't support vision
+              logger.warn({ error }, 'Image test failed - may need vision-capable model like llava');
             }
           },
         },
