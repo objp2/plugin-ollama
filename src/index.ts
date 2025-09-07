@@ -1,4 +1,4 @@
-import type { ObjectGenerationParams, Plugin, TextEmbeddingParams } from '@elizaos/core';
+import type { ObjectGenerationParams, Plugin, TextEmbeddingParams, ImageDescriptionParams } from '@elizaos/core';
 import { type GenerateTextParams, ModelType, logger, ContentType, type Content } from '@elizaos/core';
 import { generateObject, generateText, embed } from 'ai';
 import { createOllama } from 'ollama-ai-provider';
@@ -517,6 +517,67 @@ export const ollamaPlugin: Plugin = {
         logger.error(`[Ollama] Error stack: ${error?.stack || 'No stack trace'}`);
         logger.error(`[Ollama] Error details: ${safeStringify(error)}`);
         return 'Error generating text. Please try again later.';
+      }
+    },
+    [ModelType.IMAGE_DESCRIPTION]: async (
+      runtime,
+      params: ImageDescriptionParams | { imageUrl: string; prompt?: string }
+    ) => {
+      try {
+        logger.log(`[Ollama] IMAGE_DESCRIPTION called with imageUrl: ${params.imageUrl}`);
+        logger.log(`[Ollama] IMAGE_DESCRIPTION prompt: ${params.prompt || 'Describe this image'}`);
+        
+        const prompt = params.prompt || 'Describe this image in detail.';
+        const temperature = 0.7;
+        const max_response_length = 8000;
+        const baseURL = getBaseURL(runtime);
+        const ollama = createOllama({
+          fetch: runtime.fetch,
+          baseURL,
+        });
+
+        const model =
+          runtime.getSetting('OLLAMA_LARGE_MODEL') ||
+          runtime.getSetting('LARGE_MODEL') ||
+          'llava:latest'; // Use a vision-capable model for image description
+
+        logger.log(`[Ollama] Using IMAGE_DESCRIPTION model: ${model}`);
+        await ensureModelAvailable(runtime, model, baseURL);
+        
+        // Convert image URL to base64 if needed
+        const imageData = await imageUrlToBase64(params.imageUrl, runtime.fetch);
+        if (!imageData) {
+          logger.error(`[Ollama] Failed to load image from URL: ${params.imageUrl}`);
+          return {
+            title: 'Error',
+            description: 'Failed to load the image for description.'
+          };
+        }
+        
+        logger.log(`[Ollama] Successfully loaded image for description`);
+        
+        const response = await generateOllamaText(ollama, model, {
+          prompt,
+          system: 'You are a helpful assistant that describes images in detail.',
+          temperature,
+          maxTokens: max_response_length,
+          frequencyPenalty: 0.7,
+          presencePenalty: 0.7,
+          stopSequences: [],
+          images: [imageData],
+        });
+        
+        return {
+          title: 'Image Description',
+          description: response
+        };
+      } catch (error) {
+        logger.error(`[Ollama] Error in IMAGE_DESCRIPTION model: ${error?.message || 'Unknown error'}`);
+        logger.error(`[Ollama] Error details: ${safeStringify(error)}`);
+        return {
+          title: 'Error',
+          description: 'Error describing image. Please try again later.'
+        };
       }
     },
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
